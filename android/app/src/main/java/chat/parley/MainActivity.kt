@@ -8,6 +8,7 @@ import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
@@ -48,21 +49,34 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent { Parley() }
     }
-    private fun connect() = ContextCompat.startForegroundService(this, Intent(this, ConnectionService::class.java))
+    private val settings get() = getSharedPreferences("settings", MODE_PRIVATE)
+    private fun connect() {
+        settings.edit().putBoolean("connection_enabled", true).apply()
+        ContextCompat.startForegroundService(this, Intent(this, ConnectionService::class.java))
+    }
 
     @OptIn(ExperimentalMaterial3Api::class)
     @Composable private fun Parley() {
         val state by repository.state.collectAsStateWithLifecycle()
         val scope = rememberCoroutineScope()
         var localError by remember { mutableStateOf<String?>(null) }
-        var theme by rememberSaveable { mutableIntStateOf(0) }
+        var theme by rememberSaveable { mutableIntStateOf(settings.getInt("theme", 0).coerceIn(0, 2)) }
         val dark = theme == 2 || (theme == 0 && isSystemInDarkTheme())
+        LaunchedEffect(dark) {
+            enableEdgeToEdge(
+                statusBarStyle = if (dark) SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
+                    else SystemBarStyle.light(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),
+                navigationBarStyle = if (dark) SystemBarStyle.dark(0xFF111318.toInt())
+                    else SystemBarStyle.light(0xFFF8F9FD.toInt(), 0xFF111318.toInt()),
+            )
+        }
         val colors = if (dark) darkColorScheme(primary = Color(0xFFB7C4FF), primaryContainer = Color(0xFF304385), background = Color(0xFF111318), surface = Color(0xFF111318))
             else lightColorScheme(primary = Color(0xFF4361EE), primaryContainer = Color(0xFFE3E8FF), background = Color(0xFFF8F9FD), surface = Color(0xFFF8F9FD))
         fun runTask(block: suspend () -> Unit) { scope.launch { try { block() } catch (e: Exception) { localError = e.message ?: "Не удалось выполнить действие" } } }
         var route by rememberSaveable { mutableStateOf("chats") }
         var selectedKey by rememberSaveable { mutableStateOf<String?>(null) }
         var password by remember { mutableStateOf("") }
+        var licenseText by remember { mutableStateOf<String?>(null) }
         var profileName by rememberSaveable { mutableStateOf("") }
         val notificationPermission = androidx.activity.compose.rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
         val export = androidx.activity.compose.rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
@@ -94,7 +108,7 @@ class MainActivity : ComponentActivity() {
             }
         }
         LaunchedEffect(state.loaded) {
-            if (state.loaded && state.hasProfile) connect()
+            if (state.loaded && state.hasProfile && settings.getBoolean("connection_enabled", true)) connect()
         }
         MaterialTheme(colorScheme = colors) {
             Surface(Modifier.fillMaxSize()) {
@@ -140,18 +154,33 @@ class MainActivity : ComponentActivity() {
                                 OutlinedButton(onClick = { getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Tox ID", state.address)) }) { Text("Копировать Tox ID") }
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text("Фоновое соединение", Modifier.weight(1f))
-                                    Switch(state.running, { enabled -> if (enabled) connect() else stopService(Intent(this@MainActivity, ConnectionService::class.java)) })
+                                    Switch(state.running, { enabled -> if (enabled) connect() else {
+                                        settings.edit().putBoolean("connection_enabled", false).apply()
+                                        stopService(Intent(this@MainActivity, ConnectionService::class.java))
+                                    } })
                                 }
                                 Text("Android может приостанавливать сеть в Doze или завершать процесс. После принудительной остановки откройте приложение снова.", style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
                                 TextButton(onClick = { if (Build.VERSION.SDK_INT >= 33) notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS) }) { Text("Разрешить уведомления") }
                                 Text("Тема", Modifier.padding(top = 16.dp), style = MaterialTheme.typography.titleMedium)
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf("Система", "Светлая", "Тёмная").forEachIndexed { i, label -> FilterChip(theme == i, { theme = i }, label = { Text(label) }) } }
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) { listOf("Система", "Светлая", "Тёмная").forEachIndexed { i, label -> FilterChip(theme == i, {
+                                    theme = i; settings.edit().putInt("theme", i).apply()
+                                }, label = { Text(label) }) } }
                                 HorizontalDivider(Modifier.padding(vertical = 20.dp))
                                 Text("Резервная копия identity", style = MaterialTheme.typography.titleMedium)
                                 Text("Зашифрованный .tox совместим с qTox. История хранится только на этом устройстве и в экспорт не входит.", style = MaterialTheme.typography.bodySmall)
                                 OutlinedTextField(password, { password = it }, label = { Text("Пароль экспорта · от 8 символов") }, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
                                 Button(onClick = { export.launch("parley.tox") }, enabled = password.length >= 8) { Text("Экспортировать профиль") }
                                 CustomSeed { host, port, key -> runTask { repository.customBootstrap(host, port, key) } }
+                                TextButton(onClick = { runTask {
+                                    licenseText = withContext(Dispatchers.IO) {
+                                        "Parley 0.1.0-dev · GPL-3.0-or-later\n" +
+                                            "Без гарантий. Исходники: github.com/atlasru/parley-\n" +
+                                            "AndroidX, Kotlin и kotlinx.coroutines: Apache-2.0.\n\n" +
+                                            assets.list("licenses").orEmpty().sorted().joinToString("\n\n") { file ->
+                                                file + "\n" + assets.open("licenses/$file").bufferedReader().use { it.readText() }
+                                            }
+                                    }
+                                } }) { Text("О Parley и лицензии") }
                                 SafetyNote()
                                 Spacer(Modifier.height(24.dp))
                             }
@@ -181,6 +210,10 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 val error = localError ?: state.error
+                licenseText?.let { text -> AlertDialog(onDismissRequest = { licenseText = null },
+                    title = { Text("О Parley и лицензии") },
+                    text = { Text(text, Modifier.heightIn(max = 500.dp).verticalScroll(rememberScrollState()), style = MaterialTheme.typography.bodySmall) },
+                    confirmButton = { TextButton(onClick = { licenseText = null }) { Text("Закрыть") } }) }
                 if (error != null) AlertDialog(onDismissRequest = { localError = null; repository.clearError() }, title = { Text("Не удалось выполнить действие") }, text = { Text(error) }, confirmButton = { TextButton(onClick = { localError = null; repository.clearError() }) { Text("Понятно") } })
             }
         }
@@ -222,6 +255,7 @@ private fun networkLabel(s: AppState) = if (!s.running) "Соединение в
     var draft by rememberSaveable(contact.key) { mutableStateOf("") }
     var sending by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val sendEnabled = !sending && draft.isNotBlank() && contact.connection != 0 && state.running
     LaunchedEffect(messages.size) { if (messages.isNotEmpty()) list.animateScrollToItem(messages.lastIndex) }
     Column(modifier.fillMaxSize().imePadding()) {
         LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = list, contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -244,7 +278,7 @@ private fun networkLabel(s: AppState) = if (!s.running) "Соединение в
             IconButton(onClick = {
                 val text = draft; sending = true
                 scope.launch { try { if (onSend(text) && draft == text) draft = "" } finally { sending = false } }
-            }, enabled = !sending && draft.isNotBlank() && contact.connection != 0 && state.running) { Icon(Icons.AutoMirrored.Filled.Send, "Отправить", tint = MaterialTheme.colorScheme.primary) }
+            }, enabled = sendEnabled) { Icon(Icons.AutoMirrored.Filled.Send, "Отправить", tint = if (sendEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)) }
         }
     }
 }

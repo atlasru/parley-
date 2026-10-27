@@ -29,7 +29,16 @@ class Repository(context: Context) {
     private val messages = mutableListOf<Message>()
     private val receipts = mutableMapOf<Pair<Int, Long>, String>()
     @Volatile var notifyIncoming: (() -> Unit)? = null
-    init { scope.launch { mutable.update { it.copy(loaded = true, hasProfile = vault.exists()) } } }
+    init { scope.launch {
+        // Read identity, contacts and history even when the user has disabled the service.
+        // The temporary native instance is never iterated or bootstrapped.
+        if (vault.exists()) {
+            try { open(); publish() }
+            catch (_: Exception) { error("Не удалось открыть профиль. Исходное хранилище сохранено.") }
+            finally { if (handle != 0L) { Tox.close(handle); handle = 0L } }
+        }
+        mutable.update { it.copy(loaded = true, hasProfile = vault.exists()) }
+    } }
 
     private fun persist() {
         check(handle != 0L)

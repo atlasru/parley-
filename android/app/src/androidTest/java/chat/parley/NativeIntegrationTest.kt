@@ -2,16 +2,43 @@ package chat.parley
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import android.content.ContextWrapper
 import chat.parley.data.*
 import chat.parley.tox.NativeBridge as Tox
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.File
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.flow.first
 
 /** Real sockets, real cryptography and real JNI, including the callback event loop. */
 @RunWith(AndroidJUnit4::class)
 class NativeIntegrationTest {
+    @Test fun offlineStartupLoadsIdentityContactsAndHistory() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val directory = File(context.cacheDir, "offline-vault-${System.nanoTime()}").apply { mkdirs() }
+        val isolated = object : ContextWrapper(context) {
+            override fun getNoBackupFilesDir(): File = directory
+        }
+        val a = Tox.create(null, true); val b = Tox.create(null, true)
+        try {
+            val address = Tox.address(a); val key = Tox.address(b).take(64)
+            Tox.add(a, ToxAddress.decode(Tox.address(b)), "offline fixture".toByteArray())
+            val saved = Tox.savedata(a)
+            val encoded = Snapshot("Offline", saved, emptyList(), listOf(Message(key = key,
+                text = "persisted history", outgoing = false, delivery = Delivery.RECEIVED))).encode()
+            try { Vault(isolated).write(encoded) } finally { saved.fill(0); encoded.fill(0) }
+            val repository = Repository(isolated)
+            val state = withTimeout(15_000) { repository.state.first { it.loaded } }
+            assertTrue(state.hasProfile); assertFalse(state.running)
+            assertEquals(0, state.connection); assertEquals(address, state.address)
+            assertEquals(key, state.contacts.single().key)
+            assertEquals("persisted history", state.messages.single().text)
+            repository.stop()
+        } finally { Tox.close(a); Tox.close(b); directory.deleteRecursively() }
+    }
     @Test fun savedataEncryptedExportAndCorruption() {
         val a = Tox.create(null, true)
         var b = 0L

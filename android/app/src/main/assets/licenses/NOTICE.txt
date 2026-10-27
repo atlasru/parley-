@@ -1,0 +1,20 @@
+Parley Android 0.1.0-dev
+New Android application code: GPL-3.0-or-later. See toxcore-GPL-3.0.txt / android/COPYING.
+Original HAU foundation: MIT. Copyright (c) 2026 HAU contributors. See HAU-MIT.txt.
+
+Native components built from source:
+TokTok c-toxcore 285b90265d9f79039c3573d00afdfbfff34efd6d — GPL-3.0-or-later
+https://github.com/TokTok/c-toxcore
+jedisct1 libsodium 77e1ce5d6dee871c49ef211222ba18ef0c486bda — ISC
+https://github.com/jedisct1/libsodium
+TokTok cmp 52bfcfa17d2eb4322da2037ad625f5575129cece — MIT
+https://github.com/TokTok/cmp
+
+Runtime JVM components (Apache-2.0; see Apache-2.0.txt):
+AndroidX Activity, Compose, Core and Lifecycle — https://android.googlesource.com/platform/frameworks/support/
+Kotlin standard library — https://github.com/JetBrains/kotlin
+kotlinx.coroutines — https://github.com/Kotlin/kotlinx.coroutines
+
+Source and reproducible build instructions:
+https://github.com/atlasru/parley-/tree/parley/android-mvp
+Dependency pins: scripts/native-deps.ps1. No qTox or aTox application source is included in this APK.

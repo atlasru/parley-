@@ -64,7 +64,7 @@ jobs:
             adb install test-artifacts/outputs/apk/debug/app-debug.apk
             adb install test-artifacts/outputs/apk/androidTest/debug/app-debug-androidTest.apk
             adb shell am instrument -w -r -e class chat.parley.NativeIntegrationTest chat.parley.test/androidx.test.runner.AndroidJUnitRunner | tee instrumentation.txt
-            grep -q 'OK (3 tests)' instrumentation.txt
+            grep -q 'OK (4 tests)' instrumentation.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:

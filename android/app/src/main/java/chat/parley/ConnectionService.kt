@@ -50,8 +50,12 @@ class ConnectionService : Service() {
     }
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == "STOP") {
+            getSharedPreferences("settings", MODE_PRIVATE).edit().putBoolean("connection_enabled", false).apply()
             scope.launch { repository.stop(); stopForeground(STOP_FOREGROUND_REMOVE); stopSelf() }
             return START_NOT_STICKY
+        }
+        if (!getSharedPreferences("settings", MODE_PRIVATE).getBoolean("connection_enabled", true)) {
+            stopForeground(STOP_FOREGROUND_REMOVE); stopSelf(); return START_NOT_STICKY
         }
         repository.start()
         return START_STICKY
