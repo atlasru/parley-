@@ -1,4 +1,16 @@
-# HAU
+# Parley
+
+Android-first Tox messenger under development in `parley/android-mvp`, based on the HAU history. Kotlin + Jetpack Compose, real c-toxcore JNI, Android Keystore-protected identity/history. No protocol fork or mandatory Parley server.
+
+- [Android build, features and limitations](docs/ANDROID.md)
+- [Upstream source and license review](docs/UPSTREAM-REVIEW.md)
+- [Verification evidence](docs/VERIFICATION.md)
+
+New Android code and the combined toxcore-linked Android application are GPL-3.0-or-later (`android/COPYING`). Original HAU desktop files remain MIT. This is development software without a complete independent security audit. Tox does not hide all metadata/IP addresses and does not provide guaranteed offline delivery.
+
+The following describes the inherited desktop foundation, not the Android app:
+
+# HAU desktop foundation
 
 HAU is an early desktop messenger built on the decentralized Tox network. It aims to make a private, peer-to-peer identity simple to create and keep on your own device.
 
@@ -41,4 +53,4 @@ Next: contacts and one-to-one messaging, followed by protected local storage, fi
 
 ## License
 
-MIT. Toxcore and libsodium retain their own upstream licenses; fetched dependencies are not copied into this repository.
+Original HAU desktop sources: MIT. Toxcore and libsodium retain their upstream licenses. The combined Android APK is GPL-3.0-or-later; see the review linked above.

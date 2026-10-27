@@ -10,3 +10,13 @@ CMakeUserPresets.json
 *.db-shm
 *.db-wal
 profiles/
+/.deps/
+/.tools/
+/.gradle/
+**/.gradle/
+**/build/
+**/.cxx/
+**/local.properties
+/artifacts/
+*.jks
+*.keystore
