@@ -1,0 +1,9 @@
+# Windows iteration 1 after Android interoperability
+
+The Qt/C++ HAU foundation now identifies itself as Parley and uses its own application-data namespace. Its binary target remains `HAU.exe` temporarily to preserve the existing packaging pipeline. This is an identity/DHT foundation, **not a completed Windows messenger**: contacts, conversation UI, portable identity export and protected history are still outstanding on Windows.
+
+Windows identity savedata is now wrapped with current-user DPAPI (`CryptProtectData`, no machine-wide scope, no UI prompts), then committed through `QSaveFile`. The file is `profile.identity`, with a version magic. Load rejects plaintext, corrupt files and data that Windows cannot unlock; no automatic replacement or plaintext downgrade is allowed. Native DPAPI output is zeroed before release. Metadata is not secret-key material and remains JSON.
+
+Do not treat `profile.identity` as a portable `.tox` backup. It is tied to the Windows user credential context. Portable encrypted export/import is not implemented yet. Original HAU profiles are not migrated or overwritten. Linux is a development target only and retains the old plaintext savedata path; it does not claim Windows DPAPI protection. DPAPI does not protect against malicious code executing as the same user, compromise of the OS, or every recovery/credential scenario.
+
+Windows CI builds and tests actual DPAPI round trips, randomized ciphertext, integrity failure, rejection of raw bytes, encryption on the profile persistence path, and the existing 100 identity restart stress test. The desktop workflow is enabled on `parley/**`; reports must be checked before claiming the Windows change verified. Qt/toxcore dependencies still follow the inherited desktop pipeline and need alignment with the newer Android native pins before a Windows release.

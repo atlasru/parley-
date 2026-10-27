@@ -30,9 +30,13 @@ FetchContent_MakeAvailable(toxcore)
 add_library(hau_core STATIC
     core/profile/ProfileStore.cpp core/profile/ProfileStore.h
     core/storage/Database.cpp core/storage/Database.h
+    core/storage/LocalProtection.cpp core/storage/LocalProtection.h
     core/tox/ToxService.cpp core/tox/ToxService.h)
 target_include_directories(hau_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${toxcore_SOURCE_DIR})
 target_link_libraries(hau_core PUBLIC Qt6::Core Qt6::Sql toxcore_static)
+if(WIN32)
+    target_link_libraries(hau_core PRIVATE crypt32)
+endif()
 if(MSVC)
     target_compile_options(hau_core PRIVATE /W4)
 else()

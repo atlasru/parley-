@@ -10,7 +10,7 @@ ApplicationWindow {
     height: 560
     minimumWidth: 540
     minimumHeight: 470
-    title: "HAU"
+    title: "Parley — Windows foundation"
     color: Theme.background
 
     ColumnLayout {
@@ -19,7 +19,7 @@ ApplicationWindow {
         spacing: 26
         RowLayout {
             Layout.fillWidth: true
-            Text { text: "HAU"; color: Theme.text; font.pixelSize: 34; font.bold: true }
+            Text { text: "Parley"; color: Theme.text; font.pixelSize: 34; font.bold: true }
             Item { Layout.fillWidth: true }
             Text { text: "0.1.0  ·  EARLY ACCESS"; color: Theme.muted; font.pixelSize: 11; font.letterSpacing: 1.2 }
         }
@@ -76,6 +76,9 @@ ApplicationWindow {
             Layout.fillWidth: true
         }
         Item { Layout.fillHeight: true }
-        Text { text: "Private by design. Your identity stays on this device."; color: Theme.muted; font.pixelSize: 12 }
+        Text {
+            text: "Windows foundation · Identity + DHT only. Chat is available in the Android MVP. Tox does not hide your IP."
+            color: Theme.muted; font.pixelSize: 12; wrapMode: Text.WordWrap; Layout.fillWidth: true
+        }
     }
 }

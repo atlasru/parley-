@@ -1,5 +1,6 @@
 #include "core/profile/ProfileStore.h"
 #include "core/storage/Database.h"
+#include "core/storage/LocalProtection.h"
 #include "core/tox/ToxService.h"
 #include <QFile>
 #include <QSignalSpy>
@@ -17,6 +18,7 @@ private slots:
     void migrations();
     void addressEncoding();
     void identityRestartAndStress();
+    void windowsIdentityProtection();
 };
 
 void FoundationTest::profileAndMetadata() {
@@ -71,6 +73,34 @@ void FoundationTest::migrations() {
 
 void FoundationTest::addressEncoding() {
     QCOMPARE(ProfileStore::encodeAddress(QByteArray::fromHex("00abff")), QStringLiteral("00ABFF"));
+}
+
+void FoundationTest::windowsIdentityProtection() {
+#ifdef Q_OS_WIN
+    const QByteArray secret("synthetic-test-identity-do-not-log");
+    QByteArray a, b, plain; QString error;
+    QVERIFY2(LocalProtection::protect(secret, a, error), qPrintable(error));
+    QVERIFY(LocalProtection::protect(secret, b, error));
+    QVERIFY(a != b);
+    QVERIFY(!a.contains(secret));
+    QVERIFY(LocalProtection::unprotect(a, plain, error));
+    QCOMPARE(plain, secret);
+    a[a.size() - 1] = char(a[a.size() - 1] ^ 1);
+    QVERIFY(!LocalProtection::unprotect(a, plain, error));
+    QVERIFY(plain.isEmpty());
+    QVERIFY(!LocalProtection::unprotect(secret, plain, error));
+    QTemporaryDir dir; ProfileStore store(dir.path()); Profile profile;
+    QVERIFY(store.open(profile, error));
+    QVERIFY(ProfileStore::writeSavedata(profile, secret, error));
+    QFile file(profile.savedataPath()); QVERIFY(file.open(QIODevice::ReadOnly));
+    const auto protectedFile = file.readAll(); file.close();
+    QVERIFY(protectedFile.startsWith("PARLEYDP1"));
+    QVERIFY(!protectedFile.contains(secret));
+    QVERIFY(ProfileStore::readSavedata(profile, plain, error));
+    QCOMPARE(plain, secret);
+#else
+    QSKIP("DPAPI is tested on the Windows CI runner");
+#endif
 }
 
 void FoundationTest::identityRestartAndStress() {

@@ -1,4 +1,5 @@
 #include "ProfileStore.h"
+#include "core/storage/LocalProtection.h"
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -25,7 +26,7 @@ bool ProfileStore::open(Profile &profile, QString &error) const {
     }
     if (dirs.isEmpty()) {
         profile.id = QUuid::createUuid();
-        profile.name = QStringLiteral("HAU user");
+        profile.name = QStringLiteral("Parley user");
         profile.created = QDateTime::currentDateTimeUtc();
         profile.isNew = true;
         const QString id = profile.id.toString(QUuid::WithoutBraces);
@@ -69,6 +70,11 @@ bool ProfileStore::readSavedata(const Profile &profile, QByteArray &data, QStrin
     if (data.isEmpty() || file.error() != QFile::NoError) {
         error = QStringLiteral("Profile identity is empty or unreadable"); return false;
     }
+#ifdef Q_OS_WIN
+    QByteArray plain;
+    if (!LocalProtection::unprotect(data, plain, error)) { data.clear(); return false; }
+    data = plain;
+#endif
     return true;
 }
 
@@ -76,10 +82,14 @@ bool ProfileStore::writeSavedata(const Profile &profile, const QByteArray &data,
     if (data.isEmpty() || !QFileInfo(profile.directory).isDir()) {
         error = QStringLiteral("Refusing to save empty identity or invalid profile path"); return false;
     }
+    QByteArray stored = data;
+#ifdef Q_OS_WIN
+    if (!LocalProtection::protect(data, stored, error)) return false;
+#endif
     QSaveFile file(profile.savedataPath());
     file.setDirectWriteFallback(false);
     if (!file.open(QIODevice::WriteOnly)) { error = QStringLiteral("Cannot open identity transaction"); return false; }
-    if (file.write(data) != data.size() || !file.commit()) {
+    if (file.write(stored) != stored.size() || !file.commit()) {
         error = QStringLiteral("Cannot commit profile identity"); return false;
     }
     return true;

@@ -10,7 +10,13 @@ struct Profile {
     QDateTime created;
     QString directory;
     bool isNew = false;
-    QString savedataPath() const { return directory + QStringLiteral("/profile.tox"); }
+    QString savedataPath() const {
+#ifdef Q_OS_WIN
+        return directory + QStringLiteral("/profile.identity");
+#else
+        return directory + QStringLiteral("/profile.tox");
+#endif
+    }
     QString databasePath() const { return directory + QStringLiteral("/hau.db"); }
 };
 

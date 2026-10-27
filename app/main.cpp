@@ -21,8 +21,8 @@ static void logMessage(QtMsgType type, const QMessageLogContext &ctx, const QStr
 
 int main(int argc, char *argv[]) {
     QGuiApplication application(argc, argv);
-    QCoreApplication::setOrganizationName(QStringLiteral("HAU"));
-    QCoreApplication::setApplicationName(QStringLiteral("HAU"));
+    QCoreApplication::setOrganizationName(QStringLiteral("Parley"));
+    QCoreApplication::setApplicationName(QStringLiteral("Parley"));
     qInstallMessageHandler(logMessage);
     AppViewModel viewModel;
     Profile profile;
