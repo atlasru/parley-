@@ -9,6 +9,9 @@
 #include <QQmlContext>
 #include <QTextStream>
 #include <memory>
+#include <QCommandLineParser>
+#include <QDir>
+#include <QLockFile>
 
 static void logMessage(QtMsgType type, const QMessageLogContext &ctx, const QString &message) {
     const char *level = type == QtDebugMsg ? "DEBUG" : type == QtInfoMsg ? "INFO" :
@@ -23,14 +26,23 @@ int main(int argc, char *argv[]) {
     QGuiApplication application(argc, argv);
     QCoreApplication::setOrganizationName(QStringLiteral("Parley"));
     QCoreApplication::setApplicationName(QStringLiteral("Parley"));
+    QCommandLineParser parser;
+    parser.addHelpOption();
+    parser.addOption({"data-dir", "Use a separate profile directory (e.g. disposable interoperability tests)", "directory"});
+    parser.process(application);
     qInstallMessageHandler(logMessage);
     AppViewModel viewModel;
     Profile profile;
     QString error;
     Database database;
     std::unique_ptr<ToxService> tox;
-    ProfileStore profiles(ProfileStore::defaultRoot());
-    if (!profiles.open(profile, error)) {
+    const auto root = parser.isSet("data-dir") ? parser.value("data-dir") : ProfileStore::defaultRoot();
+    QDir().mkpath(root);
+    QLockFile instance(root + "/app.lock"); instance.setStaleLockTime(0);
+    ProfileStore profiles(root);
+    if (!instance.tryLock(0)) {
+        viewModel.setError(QStringLiteral("This profile directory is already in use."));
+    } else if (!profiles.open(profile, error)) {
         viewModel.setError(QStringLiteral("Profile could not be opened. Check your application data folder."));
         qCritical() << "Profile error:" << error;
     } else {
@@ -40,9 +52,7 @@ int main(int argc, char *argv[]) {
             qCritical() << "Database error:" << error;
         } else {
             tox = std::make_unique<ToxService>(profile);
-            QObject::connect(tox.get(), &ToxService::identityReady, &viewModel, &AppViewModel::setIdentity);
-            QObject::connect(tox.get(), &ToxService::networkStateChanged, &viewModel, &AppViewModel::setState);
-            QObject::connect(tox.get(), &ToxService::failure, &viewModel, &AppViewModel::setError);
+            viewModel.attach(tox.get());
             tox->start();
         }
     }

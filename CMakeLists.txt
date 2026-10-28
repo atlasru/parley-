@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.24)
 project(HAU VERSION 0.1.0 LANGUAGES C CXX)
+if(MSVC)
+    add_compile_options(/utf-8)
+endif()
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
@@ -31,11 +34,16 @@ add_library(hau_core STATIC
     core/profile/ProfileStore.cpp core/profile/ProfileStore.h
     core/storage/Database.cpp core/storage/Database.h
     core/storage/LocalProtection.cpp core/storage/LocalProtection.h
+    core/storage/ChatStore.cpp core/storage/ChatStore.h
     core/tox/ToxService.cpp core/tox/ToxService.h)
 target_include_directories(hau_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${toxcore_SOURCE_DIR})
 target_link_libraries(hau_core PUBLIC Qt6::Core Qt6::Sql toxcore_static)
 if(WIN32)
     target_link_libraries(hau_core PRIVATE crypt32)
+else()
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(PARLEY_SODIUM REQUIRED IMPORTED_TARGET libsodium)
+    target_link_libraries(hau_core PRIVATE PkgConfig::PARLEY_SODIUM)
 endif()
 if(MSVC)
     target_compile_options(hau_core PRIVATE /W4)
@@ -49,10 +57,12 @@ qt_add_qml_module(HAU URI HAU VERSION 1.0 QML_FILES
     ui/qml/Main.qml ui/qml/Theme.qml)
 target_link_libraries(HAU PRIVATE hau_core Qt6::Gui Qt6::Quick Qt6::QuickControls2)
 set_target_properties(HAU PROPERTIES WIN32_EXECUTABLE TRUE
+    OUTPUT_NAME "Parley"
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 
 if(BUILD_TESTING)
     qt_add_executable(hau_tests tests/TestFoundation.cpp)
     target_link_libraries(hau_tests PRIVATE hau_core Qt6::Test)
     add_test(NAME hau_foundation COMMAND hau_tests)
+    set_tests_properties(hau_foundation PROPERTIES TIMEOUT 180)
 endif()

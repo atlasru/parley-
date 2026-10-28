@@ -1,12 +1,15 @@
 #include "core/profile/ProfileStore.h"
 #include "core/storage/Database.h"
 #include "core/storage/LocalProtection.h"
+#include "core/storage/ChatStore.h"
 #include "core/tox/ToxService.h"
 #include <QFile>
 #include <QSignalSpy>
 #include <QSqlDatabase>
 #include <QSqlQuery>
 #include <QTemporaryDir>
+#include <QJsonObject>
+#include <QTimer>
 #include <QtTest>
 
 class FoundationTest : public QObject {
@@ -19,6 +22,9 @@ private slots:
     void addressEncoding();
     void identityRestartAndStress();
     void windowsIdentityProtection();
+    void encryptedHistoryIntegrity();
+    void realMessagingAndRestart();
+    void profileExclusiveLock();
 };
 
 void FoundationTest::profileAndMetadata() {
@@ -126,6 +132,92 @@ void FoundationTest::identityRestartAndStress() {
         QVERIFY(!service.isRunning());
     }
     QVERIFY(QFile::exists(profile.savedataPath()));
+}
+
+void FoundationTest::encryptedHistoryIntegrity() {
+    QTemporaryDir dir; ProfileStore profiles(dir.path()); Profile profile; QString error;
+    QVERIFY(profiles.open(profile, error)); ChatStore store(profile);
+    const auto owner = QString("AB").repeated(32), peer = QString("CD").repeated(32);
+    ChatState state{owner, QJsonArray{QJsonObject{{"key", peer}, {"text", "fixture request"}}},
+        QJsonArray{QJsonObject{{"id", "fixture-message"}, {"key", peer}, {"text", "history-secret-marker"},
+            {"outgoing", false}, {"at", 12345.0}, {"delivery", "received"}}}};
+    QVERIFY2(store.save(state, error), qPrintable(error));
+    ChatState loaded; QVERIFY2(store.load(owner, loaded, error), qPrintable(error));
+    QCOMPARE(loaded.messages, state.messages); QCOMPARE(loaded.requests, state.requests);
+    QVERIFY(!store.load(peer, loaded, error));
+    QFile file(store.path()); QVERIFY(file.open(QIODevice::ReadOnly));
+    auto cipher = file.readAll(); file.close(); QVERIFY(!cipher.contains("history-secret-marker"));
+    cipher[cipher.size() - 1] = char(cipher.back() ^ 1);
+    QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Truncate)); QCOMPARE(file.write(cipher), cipher.size()); file.close();
+    QVERIFY(!store.load(owner, loaded, error));
+    QVERIFY(file.open(QIODevice::ReadOnly)); QCOMPARE(file.readAll(), cipher);
+}
+
+void FoundationTest::profileExclusiveLock() {
+    QTemporaryDir dir; ProfileStore profiles(dir.path()); Profile profile; QString error;
+    QVERIFY(profiles.open(profile, error));
+    ToxService a(profile, nullptr, false); QSignalSpy ready(&a, &ToxService::identityReady);
+    a.start(); QVERIFY(ready.wait(10000));
+    ToxService b(profile, nullptr, false); QSignalSpy failure(&b, &ToxService::failure);
+    b.start(); QTRY_VERIFY_WITH_TIMEOUT(!failure.isEmpty(), 10000); b.stop(); a.stop();
+    QByteArray identity; QVERIFY(ProfileStore::readSavedata(profile, identity, error)); QVERIFY(!identity.isEmpty());
+}
+
+
+static bool containsText(const QVariantMap &snapshot, const QString &text, const QString &delivery = {}) {
+    for (const auto &entry : snapshot.value("messages").toList()) {
+        const auto message = entry.toMap();
+        if (message.value("text").toString() == text && (delivery.isEmpty() || message.value("delivery").toString() == delivery)) return true;
+    }
+    return false;
+}
+static bool online(const QVariantMap &snapshot) {
+    const auto contacts = snapshot.value("contacts").toList();
+    return contacts.size() == 1 && contacts.first().toMap().value("online").toBool();
+}
+void FoundationTest::realMessagingAndRestart() {
+    QTemporaryDir rootA, rootB; ProfileStore storeA(rootA.path()), storeB(rootB.path()); Profile pa, pb; QString error;
+    QVERIFY(storeA.open(pa, error)); QVERIFY(storeB.open(pb, error));
+    ToxService a(pa, nullptr, false), b(pb, nullptr, false);
+    QSignalSpy idA(&a, &ToxService::identityReady), idB(&b, &ToxService::identityReady);
+    QSignalSpy epA(&a, &ToxService::localEndpointReady), epB(&b, &ToxService::localEndpointReady);
+    QVariantMap sa, sb; QObject snapshots;
+    connect(&a, &ToxService::snapshotReady, &snapshots, [&](const QVariantMap &value) { sa = value; });
+    connect(&b, &ToxService::snapshotReady, &snapshots, [&](const QVariantMap &value) { sb = value; });
+    QSignalSpy fa(&a, &ToxService::failure), fb(&b, &ToxService::failure);
+    QSignalSpy accepted(&a, &ToxService::messageAccepted);
+    a.start(); b.start();
+    QTRY_VERIFY_WITH_TIMEOUT(!epA.isEmpty() && !epB.isEmpty(), 15000);
+    const auto addressA = idA.first().first().toString(), addressB = idB.first().first().toString();
+    auto bootstrapPeers = [&] {
+        a.bootstrapNode("127.0.0.1", epB.first()[0].toInt(), epB.first()[1].toString());
+        b.bootstrapNode("127.0.0.1", epA.first()[0].toInt(), epA.first()[1].toString());
+    };
+    QTimer timer; connect(&timer, &QTimer::timeout, this, bootstrapPeers); timer.start(500); bootstrapPeers();
+    a.addContact(addressB, "real socket fixture");
+    QTRY_COMPARE_WITH_TIMEOUT(sb.value("requests").toList().size(), 1, 60000);
+    QCOMPARE(sb.value("requests").toList().first().toMap().value("text").toString(), QString("real socket fixture"));
+    b.acceptRequest(addressA.left(64));
+    QTRY_VERIFY_WITH_TIMEOUT(online(sa) && online(sb), 30000);
+    const QString greeting = QStringLiteral("Привет из Parley Windows 👋"), reply = QStringLiteral("Ответ через Tox ✓");
+    a.sendMessage(addressB.left(64), greeting);
+    QTRY_VERIFY_WITH_TIMEOUT(containsText(sb, greeting, "received"), 10000);
+    QTRY_COMPARE_WITH_TIMEOUT(accepted.size(), 1, 10000);
+    b.sendMessage(addressA.left(64), reply);
+    QTRY_VERIFY_WITH_TIMEOUT(containsText(sa, reply, "received"), 10000);
+    QTRY_VERIFY_WITH_TIMEOUT(containsText(sa, greeting, "delivered"), 10000);
+    QVERIFY(fa.isEmpty()); QVERIFY(fb.isEmpty());
+    timer.stop(); a.stop(); b.stop();
+    Profile reopened; QVERIFY(storeA.open(reopened, error));
+    ToxService restored(reopened, nullptr, false); QSignalSpy restoredId(&restored, &ToxService::identityReady);
+    QSignalSpy restoredFailure(&restored, &ToxService::failure); QVariantMap restoredState; QObject restoredSnapshots;
+    connect(&restored, &ToxService::snapshotReady, &restoredSnapshots, [&](const QVariantMap &value) { restoredState = value; });
+    restored.start(); QTRY_VERIFY_WITH_TIMEOUT(containsText(restoredState, reply), 10000); restored.stop();
+    QCOMPARE(restoredId.first().first().toString(), addressA);
+    QCOMPARE(restoredState.value("contacts").toList().size(), 1);
+    QVERIFY(containsText(restoredState, greeting, "delivered")); QVERIFY(restoredFailure.isEmpty());
+    QFile history(ChatStore(reopened).path()); QVERIFY(history.open(QIODevice::ReadOnly));
+    QVERIFY(!history.readAll().contains(greeting.toUtf8()));
 }
 
 QTEST_GUILESS_MAIN(FoundationTest)

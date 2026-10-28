@@ -1,4 +1,4 @@
-name: Build and test
+name: Parley desktop
 on:
   push:
     branches: [main, 'parley/**']
@@ -29,7 +29,7 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/hau-smoke"
           set +e
-          QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software XDG_DATA_HOME="$RUNNER_TEMP/hau-smoke" timeout 5s ./build/bin/HAU > "$RUNNER_TEMP/hau-smoke.log" 2>&1
+          QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software XDG_DATA_HOME="$RUNNER_TEMP/hau-smoke" timeout 5s ./build/bin/Parley > "$RUNNER_TEMP/hau-smoke.log" 2>&1
           status=$?
           set -e
           cat "$RUNNER_TEMP/hau-smoke.log"
@@ -37,14 +37,16 @@ jobs:
           test "$(find "$RUNNER_TEMP/hau-smoke" -name profile.tox | wc -l)" -eq 1
       - name: Package
         run: |
-          mkdir -p dist/HAU-linux-x86_64
-          cp build/bin/HAU dist/HAU-linux-x86_64/
-          cp README.md LICENSE dist/HAU-linux-x86_64/
-          tar -czf HAU-linux-x86_64.tar.gz -C dist HAU-linux-x86_64
+          mkdir -p dist/Parley-linux-x86_64/licenses
+          cp build/bin/Parley dist/Parley-linux-x86_64/
+          cp README.md LICENSE android/COPYING dist/Parley-linux-x86_64/
+          cp build/_deps/toxcore-src/LICENSE dist/Parley-linux-x86_64/licenses/toxcore-GPL.txt
+          cp /usr/share/doc/libsodium23/copyright dist/Parley-linux-x86_64/licenses/libsodium-copyright.txt
+          tar -czf Parley-linux-x86_64.tar.gz -C dist Parley-linux-x86_64
       - uses: actions/upload-artifact@v4
         with:
-          name: HAU-linux-x86_64
-          path: HAU-linux-x86_64.tar.gz
+          name: Parley-linux-x86_64
+          path: Parley-linux-x86_64.tar.gz
 
   windows:
     runs-on: windows-2022
@@ -79,13 +81,15 @@ jobs:
       - name: Package runnable application
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force dist/HAU-windows-x64 | Out-Null
-          Copy-Item build/bin/HAU.exe dist/HAU-windows-x64/
-          Copy-Item README.md,LICENSE dist/HAU-windows-x64/
-          & "$env:QT_ROOT_DIR/bin/windeployqt.exe" --release --compiler-runtime --qmldir ui/qml dist/HAU-windows-x64/HAU.exe
+          New-Item -ItemType Directory -Force dist/Parley-windows-x64/licenses | Out-Null
+          Copy-Item build/bin/Parley.exe dist/Parley-windows-x64/
+          Copy-Item README.md,LICENSE,android/COPYING dist/Parley-windows-x64/
+          Copy-Item build/_deps/toxcore-src/LICENSE dist/Parley-windows-x64/licenses/toxcore-GPL.txt
+          if (Test-Path "$env:QT_ROOT_DIR/LICENSES") { Copy-Item "$env:QT_ROOT_DIR/LICENSES" dist/Parley-windows-x64/licenses/Qt -Recurse }
+          & "$env:QT_ROOT_DIR/bin/windeployqt.exe" --release --compiler-runtime --qmldir ui/qml dist/Parley-windows-x64/Parley.exe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          Compress-Archive -Path dist/HAU-windows-x64 -DestinationPath HAU-windows-x64.zip
+          Compress-Archive -Path dist/Parley-windows-x64 -DestinationPath Parley-windows-x64.zip
       - uses: actions/upload-artifact@v4
         with:
-          name: HAU-windows-x64
-          path: HAU-windows-x64.zip
+          name: Parley-windows-x64
+          path: Parley-windows-x64.zip
