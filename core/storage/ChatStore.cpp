@@ -109,8 +109,9 @@ bool ChatStore::save(const ChatState &state, QString &error) const {
     sodium_memzero(key.data(), key.size()); plain.fill('\0'); sealed = QByteArray("PARLEYBOX1") + nonce + cipher;
 #endif
     QSaveFile file(path()); file.setDirectWriteFallback(false);
-    file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
-    if (!file.open(QIODevice::WriteOnly) || file.write(sealed) != sealed.size() || !file.commit()) {
+    if (!file.open(QIODevice::WriteOnly) ||
+        !file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner) ||
+        file.write(sealed) != sealed.size() || !file.commit()) {
         error = QStringLiteral("Cannot commit encrypted history"); return false;
     }
     return true;
