@@ -85,6 +85,9 @@ jobs:
           Copy-Item build/bin/Parley.exe dist/Parley-windows-x64/
           Copy-Item README.md,LICENSE,android/COPYING dist/Parley-windows-x64/
           Copy-Item build/_deps/toxcore-src/LICENSE dist/Parley-windows-x64/licenses/toxcore-GPL.txt
+          $notices = Get-ChildItem -Path "$env:GITHUB_WORKSPACE" -Recurse -Filter copyright | Where-Object { $_.FullName -match '[\\/]x64-windows-static-md[\\/]share[\\/][^\\/]+[\\/]copyright$' }
+          if (-not ($notices | Where-Object { $_.Directory.Name -eq 'libsodium' })) { throw 'libsodium copyright notice was not found' }
+          foreach ($notice in $notices) { Copy-Item $notice.FullName "dist/Parley-windows-x64/licenses/$($notice.Directory.Name)-copyright.txt" }
           if (Test-Path "$env:QT_ROOT_DIR/LICENSES") { Copy-Item "$env:QT_ROOT_DIR/LICENSES" dist/Parley-windows-x64/licenses/Qt -Recurse }
           & "$env:QT_ROOT_DIR/bin/windeployqt.exe" --release --compiler-runtime --qmldir ui/qml dist/Parley-windows-x64/Parley.exe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -98,6 +101,8 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force dist/Parley-test-tools | Out-Null
           Copy-Item build/hau_tests.exe dist/Parley-test-tools/
+          Copy-Item README.md,LICENSE,android/COPYING dist/Parley-test-tools/
+          Copy-Item dist/Parley-windows-x64/licenses dist/Parley-test-tools/licenses -Recurse
           & "$env:QT_ROOT_DIR/bin/windeployqt.exe" --release --compiler-runtime dist/Parley-test-tools/hau_tests.exe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Compress-Archive -Path dist/Parley-test-tools -DestinationPath Parley-test-tools.zip
