@@ -41,6 +41,7 @@ jobs:
           cp build/bin/Parley dist/Parley-linux-x86_64/
           cp README.md LICENSE android/COPYING dist/Parley-linux-x86_64/
           cp build/_deps/toxcore-src/LICENSE dist/Parley-linux-x86_64/licenses/toxcore-GPL.txt
+          cp build/_deps/toxcore-src/third_party/cmp/LICENSE dist/Parley-linux-x86_64/licenses/cmp-MIT.txt
           cp /usr/share/doc/libsodium23/copyright dist/Parley-linux-x86_64/licenses/libsodium-copyright.txt
           tar -czf Parley-linux-x86_64.tar.gz -C dist Parley-linux-x86_64
       - uses: actions/upload-artifact@v4
@@ -85,10 +86,11 @@ jobs:
           Copy-Item build/bin/Parley.exe dist/Parley-windows-x64/
           Copy-Item README.md,LICENSE,android/COPYING dist/Parley-windows-x64/
           Copy-Item build/_deps/toxcore-src/LICENSE dist/Parley-windows-x64/licenses/toxcore-GPL.txt
+          Copy-Item build/_deps/toxcore-src/third_party/cmp/LICENSE dist/Parley-windows-x64/licenses/cmp-MIT.txt
           $notices = Get-ChildItem -Path "$env:GITHUB_WORKSPACE" -Recurse -Filter copyright | Where-Object { $_.FullName -match '[\\/]x64-windows-static-md[\\/]share[\\/][^\\/]+[\\/]copyright$' }
           if (-not ($notices | Where-Object { $_.Directory.Name -eq 'libsodium' })) { throw 'libsodium copyright notice was not found' }
           foreach ($notice in $notices) { Copy-Item $notice.FullName "dist/Parley-windows-x64/licenses/$($notice.Directory.Name)-copyright.txt" }
-          if (Test-Path "$env:QT_ROOT_DIR/LICENSES") { Copy-Item "$env:QT_ROOT_DIR/LICENSES" dist/Parley-windows-x64/licenses/Qt -Recurse }
+          ./scripts/package-qt-notices.ps1 -Destination dist/Parley-windows-x64/licenses/Qt
           & "$env:QT_ROOT_DIR/bin/windeployqt.exe" --release --compiler-runtime --qmldir ui/qml dist/Parley-windows-x64/Parley.exe
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           Compress-Archive -Path dist/Parley-windows-x64 -DestinationPath Parley-windows-x64.zip
