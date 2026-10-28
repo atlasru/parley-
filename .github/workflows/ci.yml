@@ -93,3 +93,15 @@ jobs:
         with:
           name: Parley-windows-x64
           path: Parley-windows-x64.zip
+      - name: Package opt-in native interoperability test tool
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist/Parley-test-tools | Out-Null
+          Copy-Item build/hau_tests.exe dist/Parley-test-tools/
+          & "$env:QT_ROOT_DIR/bin/windeployqt.exe" --release --compiler-runtime dist/Parley-test-tools/hau_tests.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Compress-Archive -Path dist/Parley-test-tools -DestinationPath Parley-test-tools.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Parley-test-tools
+          path: Parley-test-tools.zip

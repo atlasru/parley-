@@ -1,9 +1,27 @@
-# Windows iteration 1 after Android interoperability
+# Parley desktop iteration
 
-The Qt/C++ HAU foundation now identifies itself as Parley and uses its own application-data namespace. Its binary target remains `HAU.exe` temporarily to preserve the existing packaging pipeline. This is an identity/DHT foundation, **not a completed Windows messenger**: contacts, conversation UI, portable identity export and protected history are still outstanding on Windows.
+The desktop client uses the same standard Tox friend/message APIs as compatible clients. All toxcore access is serialized on a dedicated worker. The Qt interface receives immutable snapshots via queued signals; remote text is rendered as plain text. No mock transport is present in production.
 
-Windows identity savedata is now wrapped with current-user DPAPI (`CryptProtectData`, no machine-wide scope, no UI prompts), then committed through `QSaveFile`. The file is `profile.identity`, with a version magic. Load rejects plaintext, corrupt files and data that Windows cannot unlock; no automatic replacement or plaintext downgrade is allowed. Native DPAPI output is zeroed before release. Metadata is not secret-key material and remains JSON.
+## Implemented in the messaging iteration
 
-Do not treat `profile.identity` as a portable `.tox` backup. It is tied to the Windows user credential context. Portable encrypted export/import is not implemented yet. Original HAU profiles are not migrated or overwritten. Linux is a development target only and retains the old plaintext savedata path; it does not claim Windows DPAPI protection. DPAPI does not protect against malicious code executing as the same user, compromise of the OS, or every recovery/credential scenario.
+- Add a full Tox ID, receive/accept/reject friend requests, display contact presence.
+- Send/receive UTF-8 text, native delivery receipts, and durable request/message history.
+- Light/dark themes, per-conversation in-memory drafts, explicit send failures and unknown status after restart.
+- Current-user DPAPI for both Windows identity and history, atomic writes, owner binding and integrity failures that preserve the original file.
+- A single-writer profile lock. `--data-dir` supports isolated manual interoperability profiles.
 
-Windows CI builds and tests actual DPAPI round trips, randomized ciphertext, integrity failure, rejection of raw bytes, encryption on the profile persistence path, and the existing 100 identity restart stress test. The desktop workflow is enabled on `parley/**`; reports must be checked before claiming the Windows change verified. Qt/toxcore dependencies still follow the inherited desktop pipeline and need alignment with the newer Android native pins before a Windows release.
+The executable is now `Parley.exe`, though the inherited CMake target remains `HAU`. This is still an early client: portable desktop import/export, calls, file transfer, Windows notifications/tray behavior and history pagination are not implemented. Android retains its existing foreground-service/notification and portable profile functionality.
+
+## Storage and boundaries
+
+Windows `profile.identity` and `history.vault` are DPAPI-wrapped and tied to the Windows user credential context. Plaintext fallback and automatic identity replacement are disabled. History carries the identity public key inside the protected payload; another identity cannot silently adopt that history. DPAPI output buffers are zeroed before release. Non-secret profile metadata remains JSON. DPAPI does not protect against malicious code executing as the same user, OS compromise or every recovery/credential scenario. The encrypted files are not portable backups.
+
+Linux development stores plaintext identity and libsodium-secretbox history with a private filesystem key, not DPAPI. Native test fixtures use real sockets and this actual persistence path on each platform. The history snapshot has a 32 MiB limit; reaching it stops the connection without deleting older messages.
+
+Profile identity and chat history are separate atomic files. A failure stops the session. Request acceptance is reconciled against native contacts on restart, and unconfirmed outgoing statuses become unknown. There is no claim of an atomic transaction spanning network delivery and local storage, nor automatic retry of uncertain sends.
+
+## Verification
+
+The desktop Qt test suite retains the 100 identity-restart stress test and Windows DPAPI checks. New tests exercise authenticated history round trips, wrong-owner/ciphertext rejection, profile locking, and two production ToxService instances over real local UDP sockets: request, acceptance, Unicode messages in both directions, receipts and history/contact restoration after restart. Public discovery can be disabled for deterministic tests; the transport remains actual toxcore.
+
+Inspect GitHub Actions for the exact commit's outcome. A source commit alone is not evidence that Windows, the GUI or an external-client scenario passed. Desktop toxcore/libsodium dependency pins still follow the inherited desktop build and should be aligned with Android before a Windows release.

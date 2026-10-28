@@ -25,6 +25,7 @@ private slots:
     void encryptedHistoryIntegrity();
     void realMessagingAndRestart();
     void profileExclusiveLock();
+    void externalClientInterop();
 };
 
 void FoundationTest::profileAndMetadata() {
@@ -218,6 +219,28 @@ void FoundationTest::realMessagingAndRestart() {
     QVERIFY(containsText(restoredState, greeting, "delivered")); QVERIFY(restoredFailure.isEmpty());
     QFile history(ChatStore(reopened).path()); QVERIFY(history.open(QIODevice::ReadOnly));
     QVERIFY(!history.readAll().contains(greeting.toUtf8()));
+}
+
+void FoundationTest::externalClientInterop() {
+    const auto peer = qEnvironmentVariable("PARLEY_INTEROP_PEER").trimmed();
+    if (peer.isEmpty()) QSKIP("Explicit external peer required; not a substitute for the deterministic socket tests");
+    QVERIFY2(peer.size() == 76, "External fixture must be a full Tox ID");
+    QTemporaryDir root; ProfileStore profiles(root.path()); Profile profile; QString error;
+    QVERIFY(profiles.open(profile, error)); QVERIFY(profile.isNew);
+    ToxService service(profile); QVariantMap snapshot; QObject snapshots;
+    connect(&service, &ToxService::snapshotReady, &snapshots, [&](const QVariantMap &value) { snapshot = value; });
+    QSignalSpy ready(&service, &ToxService::identityReady), failure(&service, &ToxService::failure);
+    service.start(); QTRY_VERIFY_WITH_TIMEOUT(!ready.isEmpty(), 15000);
+    service.addContact(peer, "Parley Windows compatibility test");
+    QTRY_VERIFY_WITH_TIMEOUT(online(snapshot), 120000);
+    const auto outgoing = QStringLiteral("Parley Windows -> Toxic: UTF-8 ✓");
+    const auto reply = QStringLiteral("Toxic -> Parley Windows: OK ✓");
+    service.sendMessage(peer.left(64).toUpper(), outgoing);
+    QTRY_VERIFY_WITH_TIMEOUT(containsText(snapshot, reply, "received"), 120000);
+    QTRY_VERIFY_WITH_TIMEOUT(containsText(snapshot, outgoing, "delivered"), 10000);
+    service.stop(); QVERIFY(failure.isEmpty());
+    ChatState stored; QVERIFY(ChatStore(profile).load(ready.first().first().toString().left(64), stored, error));
+    QCOMPARE(stored.messages.size(), 2);
 }
 
 QTEST_GUILESS_MAIN(FoundationTest)

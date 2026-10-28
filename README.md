@@ -1,39 +1,27 @@
 # Parley
 
-Android-first Tox messenger under development in `parley/android-mvp`, based on the HAU history. Kotlin + Jetpack Compose, real c-toxcore JNI, Android Keystore-protected identity/history. No protocol fork or mandatory Parley server.
+Android-first messenger on the standard Tox network. No phone number, mandatory Parley server or protocol fork.
 
-- [Android build, features and limitations](docs/ANDROID.md)
-- [Upstream source and license review](docs/UPSTREAM-REVIEW.md)
-- [Verification evidence](docs/VERIFICATION.md)
+- **Android MVP:** Kotlin, Compose, real toxcore JNI, local profiles, encrypted identity/history, encrypted `.tox` import/export, bootstrap, contacts/requests, bidirectional text, receipts, foreground connection and notifications. Real exchange with Toxic has been verified; see the Android guide and the recorded verification commit on `parley/android-mvp`.
+- **Desktop iteration:** Qt Quick/C++ with real toxcore, contacts/requests, conversation UI, text messages and protected local history. Windows identity/history use current-user DPAPI. Portable desktop profile import/export, calls and file transfer remain outstanding. Build/test results must be checked before describing an iteration as verified.
 
-New Android code and the combined toxcore-linked Android application are GPL-3.0-or-later (`android/COPYING`). Original HAU desktop files remain MIT. This is development software without a complete independent security audit. Tox does not hide all metadata/IP addresses and does not provide guaranteed offline delivery.
+[Android guide](docs/ANDROID.md) · [Windows guide](docs/WINDOWS.md) · [Upstream/license review](docs/UPSTREAM-REVIEW.md)
 
-The following describes the inherited desktop foundation, not the Android app:
+## Android
 
-# HAU desktop foundation
+JDK 21, Android SDK 36, NDK 27.2.12479018 and CMake 3.22.1:
 
-HAU is an early desktop messenger built on the decentralized Tox network. It aims to make a private, peer-to-peer identity simple to create and keep on your own device.
-
-**Status:** 0.1.0 foundation release. HAU currently creates one local profile, generates a Tox identity, saves it across restarts, connects to Tox bootstrap nodes, and lets you copy your Tox ID. Contacts and chat are planned for later versions; this release is not yet a usable messenger.
-
-## Platforms
-
-Windows 10/11 x64 is the primary target. Linux x86_64 is supported for development. No account or central HAU server is needed.
-
-## Build
-
-Requirements: CMake 3.24+, C++20 compiler (MSVC 2022 on Windows), Qt 6.5+ with Quick, Quick Controls 2, SQL SQLite driver and Test modules, libsodium, Git, and Ninja. CMake fetches the tagged [c-toxcore v0.2.23](https://github.com/TokTok/c-toxcore/releases/tag/v0.2.23) source; no binary toxcore download is needed.
-
-Linux (Ubuntu): install `libsodium-dev`, `pkg-config`, `libgl1-mesa-dev`, Qt 6 development packages and their QML modules. Then:
-
-```sh
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
-cmake --build build
-ctest --test-dir build --output-on-failure
-./build/HAU
+```powershell
+./scripts/native-deps.ps1
+cd android
+./gradlew.bat :app:assembleDebug :app:testDebugUnitTest :app:lintDebug
 ```
 
-Windows: install Qt 6.8.3 for MSVC 2022, Ninja and vcpkg. `vcpkg.json` installs libsodium for the static triplet:
+The APK includes arm64-v8a and x86_64 native libraries compiled from pinned upstream sources. Debug APKs are CI artifacts, not published releases.
+
+## Windows / desktop development
+
+Qt 6.8.3 (minimum 6.5), CMake 3.24+, C++20 compiler, Ninja, libsodium and Git. Windows uses MSVC 2022 and the pinned vcpkg manifest; Linux development needs libsodium-dev, pkg-config, Qt Quick/Controls/SQL/Test and the normal Qt runtime dependencies.
 
 ```powershell
 cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE="C:/vcpkg/scripts/buildsystems/vcpkg.cmake" -DVCPKG_TARGET_TRIPLET=x64-windows-static-md
@@ -41,16 +29,20 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-Set `CMAKE_PREFIX_PATH` if CMake cannot locate Qt. GitHub Actions builds both platforms; the Windows workflow packages Qt plugins and runtime DLLs with `windeployqt` into `HAU-windows-x64.zip`. The Linux tarball is a build artifact, not a standalone AppImage; host Qt and libsodium are required.
+Set `CMAKE_PREFIX_PATH` to your Qt installation if needed. Run `build/bin/Parley.exe`; the inherited CMake target is still named `HAU`. Windows CI packages Qt plugins/runtime with the executable into `Parley-windows-x64.zip`. Linux CI produces a development tarball requiring host Qt/libsodium, not a standalone application image.
 
-## Local data
+Use `Parley.exe --data-dir <empty-test-directory>` for a disposable interoperability profile. Profile directories are locked against simultaneous use. Do not reuse a personal Tox identity in two running clients.
 
-The app uses Qt's application data directory, under `HAU/profiles/<uuid>/`: `profile.json` stores non-secret metadata, `profile.tox` contains the sensitive Tox identity, and `hau.db` stores schema migrations. Back up `profile.tox` securely. If it is missing or corrupt, HAU refuses to replace it silently. Local data is not encrypted at rest in 0.1.0.
+## Local data and delivery
 
-## Roadmap
+Parley uses its own application-data namespace, separate from original HAU. `profiles/<uuid>/profile.json` is non-secret metadata. Windows stores DPAPI-protected savedata in `profile.identity`; `history.vault` contains protected requests/messages bound to that identity. These files are Windows-user-bound and are not portable `.tox` backups. Desktop portable export/import is not implemented yet. Original HAU profiles are not migrated or overwritten.
 
-Next: contacts and one-to-one messaging, followed by protected local storage, file transfer and calls. See [architecture](docs/ARCHITECTURE.md) for the current boundaries.
+Linux is currently a development target: identity remains plaintext `profile.tox`; history uses libsodium secretbox with an owner-only key file. It does not claim Windows DPAPI protection. Full filesystem access can expose the Linux key. The initial history store rewrites an encrypted snapshot and has a 32 MiB payload limit; it is not yet a paginated database. Drafts remain in memory only.
 
-## License
+Only a native receipt changes an outgoing message to **received by the client**. This does not mean a person read it. Unconfirmed sent/pending messages become **unknown** after restart and are not silently resent. Sending to an offline contact is rejected without a fake delivery claim. Corrupt protected storage stops the connection and preserves the previous files.
 
-Original HAU desktop sources: MIT. Toxcore and libsodium retain their upstream licenses. The combined Android APK is GPL-3.0-or-later; see the review linked above.
+Tox does not hide IP addresses or all metadata. Both peers generally need to be online. Connectivity depends on NAT/firewalls and discovery seeds; there is no guaranteed offline delivery or complete independent Parley/Tox security audit. Device or same-user compromise is outside the protection provided by local encryption.
+
+## Licensing
+
+Original HAU and the new desktop source files retain MIT terms. New Android/JNI source is GPL-3.0-or-later. **The combined toxcore-linked application binaries are GPL-3.0-or-later**, not MIT-only. See root `LICENSE`, `android/COPYING` and the upstream review. Qt, libsodium and other dependencies retain their own licenses. No releases or main merges are performed without user approval.
